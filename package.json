@@ -1,0 +1,159 @@
+{
+  "name": "@arki/mail",
+  "version": "0.5.0",
+  "description": "Typed mail for TypeScript: Standard Schema templates, honest transports, quota failover, and mail that commits with your transaction.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/arki-labs/arki.git"
+  },
+  "homepage": "https://arki.dev",
+  "bugs": {
+    "url": "https://github.com/arki-labs/arki/issues"
+  },
+  "keywords": [
+    "arki",
+    "typescript"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./templates/auth": {
+      "types": "./dist/templates/auth.d.ts",
+      "import": "./dist/templates/auth.js",
+      "default": "./dist/templates/auth.js"
+    },
+    "./http/resend": {
+      "types": "./dist/http/resend.d.ts",
+      "import": "./dist/http/resend.js",
+      "default": "./dist/http/resend.js"
+    },
+    "./http/mailpit": {
+      "types": "./dist/http/mailpit.d.ts",
+      "import": "./dist/http/mailpit.js",
+      "default": "./dist/http/mailpit.js"
+    },
+    "./http/unosend": {
+      "types": "./dist/http/unosend.d.ts",
+      "import": "./dist/http/unosend.js",
+      "default": "./dist/http/unosend.js"
+    },
+    "./http/cloudflare": {
+      "types": "./dist/http/cloudflare.d.ts",
+      "import": "./dist/http/cloudflare.js",
+      "default": "./dist/http/cloudflare.js"
+    },
+    "./node/ses": {
+      "types": "./dist/node/ses.d.ts",
+      "import": "./dist/node/ses.js",
+      "default": "./dist/node/ses.js"
+    },
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "import": "./dist/react/index.js",
+      "default": "./dist/react/index.js"
+    },
+    "./react/templates/magic-link": {
+      "types": "./dist/react/templates/magic-link.d.ts",
+      "import": "./dist/react/templates/magic-link.js",
+      "default": "./dist/react/templates/magic-link.js"
+    },
+    "./react/templates/magic-link-minimal": {
+      "types": "./dist/react/templates/magic-link-minimal.d.ts",
+      "import": "./dist/react/templates/magic-link-minimal.js",
+      "default": "./dist/react/templates/magic-link-minimal.js"
+    },
+    "./pg": {
+      "types": "./dist/pg/index.d.ts",
+      "import": "./dist/pg/index.js",
+      "default": "./dist/pg/index.js"
+    },
+    "./pg/testing": {
+      "types": "./dist/pg/testing.d.ts",
+      "import": "./dist/pg/testing.js",
+      "default": "./dist/pg/testing.js"
+    },
+    "./dot": {
+      "types": "./dist/dot.d.ts",
+      "import": "./dist/dot.js",
+      "default": "./dist/dot.js"
+    },
+    "./outbox": {
+      "types": "./dist/outbox.d.ts",
+      "import": "./dist/outbox.js",
+      "default": "./dist/outbox.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "import": "./dist/testing.js",
+      "default": "./dist/testing.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist/**",
+    "src/**",
+    "!src/**/*.test.*",
+    "!src/**/*.spec.*",
+    "docs/agent-guide.md",
+    "llms.txt",
+    "README.md",
+    "LICENSE",
+    "package.json"
+  ],
+  "dependencies": {
+    "@arki/failure": "0.3.0",
+    "@arki/log": "0.4.0",
+    "@arki/schema": "0.3.0",
+    "zod": "4.6.5"
+  },
+  "peerDependencies": {
+    "@arki/dot": "^0.10.0",
+    "@arki/journal": "^0.4.1",
+    "@arki/resilience": "^0.3.2",
+    "@aws-sdk/client-sesv2": "^3",
+    "@react-email/render": "^2.0.6",
+    "drizzle-orm": "^1.0.0-rc.4",
+    "react": "^18 || ^19",
+    "react-email": "^6",
+    "vitest": "^5.0.3"
+  },
+  "peerDependenciesMeta": {
+    "@arki/dot": {
+      "optional": true
+    },
+    "@arki/journal": {
+      "optional": true
+    },
+    "@arki/resilience": {
+      "optional": true
+    },
+    "@aws-sdk/client-sesv2": {
+      "optional": true
+    },
+    "@react-email/render": {
+      "optional": true
+    },
+    "drizzle-orm": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "react-email": {
+      "optional": true
+    },
+    "vitest": {
+      "optional": true
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

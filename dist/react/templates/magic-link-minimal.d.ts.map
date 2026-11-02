@@ -1,0 +1,1 @@
+{"version":3,"file":"magic-link-minimal.d.ts","sourceRoot":"","sources":["../../../src/react/templates/magic-link-minimal.tsx"],"names":[],"mappings":"AAEA,KAAK,0BAA0B,GAAG;IAChC,QAAQ,CAAC,EAAE,MAAM,CAAC;IAClB,MAAM,CAAC,EAAE,MAAM,CAAC;IAChB,MAAM,CAAC,EAAE,MAAM,CAAC;IAChB,cAAc,CAAC,EAAE,MAAM,CAAC;CACzB,CAAC;AAEF,eAAO,MAAM,qBAAqB,kDAK/B,0BAA0B,gCAwC5B,CAAC;eAEa,qBAAqB"}

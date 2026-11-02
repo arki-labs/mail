@@ -1,0 +1,110 @@
+[
+  {
+    "code": "ARKI_MAIL_E001",
+    "package": "@arki/mail",
+    "kind": "thrown",
+    "what": "No transport, a duplicate transport id, an empty key or sender, a transport SDK that cannot load.",
+    "fix": "Pass one transport with a unique id and a sender, and install the transport's SDK peer.",
+    "verify": "bun run test -- src/mailer.spec.ts",
+    "source": "src/errors.ts:14"
+  },
+  {
+    "code": "ARKI_MAIL_E002",
+    "package": "@arki/mail",
+    "kind": "thrown",
+    "what": "A queued mail needs exactly one `to` recipient and no cc or bcc. (A message that cannot be sent as written is the returned failure `MailInvalidMessage`, not this code.)",
+    "fix": "Queue one mail per recipient, with the recipient in `to` only.",
+    "verify": "bun run test -- src/pg",
+    "source": "src/errors.ts:22"
+  },
+  {
+    "code": "ARKI_MAIL_E005",
+    "package": "@arki/mail",
+    "kind": "thrown",
+    "what": "A field the transport cannot carry. Thrown before any request.",
+    "fix": "Drop the field, or pick a transport that carries it (see the transport table in the README).",
+    "verify": "bun run test -- src/message.spec.ts",
+    "source": "src/errors.ts:29"
+  },
+  {
+    "code": "ARKI_MAIL_E009",
+    "package": "@arki/mail",
+    "kind": "thrown",
+    "what": "A durable send was given the root database handle instead of a transaction.",
+    "fix": "Call `enqueue` inside `db.transaction(async tx => ...)` and pass `tx`.",
+    "verify": "bun run test -- src/pg",
+    "source": "src/errors.ts:36"
+  },
+  {
+    "code": "ARKI_MAIL_E010",
+    "package": "@arki/mail",
+    "kind": "thrown",
+    "what": "A queue row does not hold a readable mail (a row edited by hand, or written by an older version). (A mail over `maxBytes` is the returned failure `MailTooLarge`.)",
+    "fix": "Dead-letter the row and queue the mail again.",
+    "verify": "bun run test -- src/pg",
+    "source": "src/errors.ts:44"
+  },
+  {
+    "code": "mail.expired",
+    "package": "@arki/mail",
+    "kind": "failure",
+    "what": "A queued mail's `expiresAt` passed before it could be sent. Nothing was sent.",
+    "fix": "Queue a new mail, such as a fresh sign-in link.",
+    "verify": "bun run test -- src/mailer.spec.ts",
+    "source": "src/failures.ts:102"
+  },
+  {
+    "code": "mail.invalid_input",
+    "package": "@arki/mail",
+    "kind": "failure",
+    "what": "The template's schema refused the input. Nothing was sent.",
+    "fix": "Fix the input to match the template's schema. The same input fails again.",
+    "verify": "bun run test -- src/template.spec.ts",
+    "source": "src/failures.ts:17"
+  },
+  {
+    "code": "mail.invalid_message",
+    "package": "@arki/mail",
+    "kind": "failure",
+    "what": "The message cannot be sent as written: no recipient, an empty address, a line break in an address, the subject or a header (header injection), or a header the message owns. Nothing was sent. Recipients are usually typed by a user, so this is an expected outcome, not a bug.",
+    "fix": "Show the user what is wrong with the address, or remove the line break or reserved header. The same message fails again.",
+    "verify": "bun run test -- src/message.spec.ts",
+    "source": "src/failures.ts:117"
+  },
+  {
+    "code": "mail.quota_exhausted",
+    "package": "@arki/mail",
+    "kind": "failure",
+    "what": "Every transport is over its monthly quota. Nothing was sent.",
+    "fix": "Add a transport without a quota as a fallback, or raise a quota.",
+    "verify": "bun run test -- src/failover.spec.ts",
+    "source": "src/failures.ts:37"
+  },
+  {
+    "code": "mail.rejected",
+    "package": "@arki/mail",
+    "kind": "failure",
+    "what": "The service refused the mail, so it surely did not take it. `retryable` is true for HTTP 429 and 5xx, when trying later can help. `upstreamStatus` is the service's HTTP status.",
+    "fix": "Retry later when `data.retryable` is true. Otherwise fix the mail or the account settings.",
+    "verify": "bun run test -- src/failover.spec.ts",
+    "source": "src/failures.ts:51"
+  },
+  {
+    "code": "mail.too_large",
+    "package": "@arki/mail",
+    "kind": "failure",
+    "what": "The rendered message is larger than the outbox allows (`maxBytes`). Nothing was queued.",
+    "fix": "Shorten the content, or raise `maxBytes`. Put large files elsewhere and link them.",
+    "verify": "bun run test -- src/pg",
+    "source": "src/failures.ts:130"
+  },
+  {
+    "code": "mail.uncertain",
+    "package": "@arki/mail",
+    "kind": "failure",
+    "what": "No readable answer: a timeout, a network failure, or an answer that could not be read. The service may have taken the mail, so trying another service could deliver it twice.",
+    "fix": "Send it again later with the same idempotency key. The service may already have taken it.",
+    "verify": "bun run test -- src/failover.spec.ts",
+    "source": "src/failures.ts:78"
+  }
+]

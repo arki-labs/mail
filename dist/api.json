@@ -1,0 +1,546 @@
+{
+  "package": "@arki/mail",
+  "version": "0.5.0",
+  "entries": [
+    {
+      "subpath": ".",
+      "name": "Address",
+      "kind": "type",
+      "signature": "export type Address = string;",
+      "jsdocSummary": "One address: `user@example.com` or `Name <user@example.com>`."
+    },
+    {
+      "subpath": ".",
+      "name": "Addresses",
+      "kind": "type",
+      "signature": "export type Addresses = Address | readonly Address[];",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": ".",
+      "name": "Awaitable",
+      "kind": "type",
+      "signature": "export type Awaitable<T> = T | Promise<T>;",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": ".",
+      "name": "defineTemplate",
+      "kind": "function",
+      "signature": "export declare function defineTemplate<S extends StandardSchemaV1, const Name extends string>(template: MailTemplate<S, Name>): MailTemplate<S, Name>;",
+      "jsdocSummary": "Defines a template. Returns it unchanged; the point is the inferred types."
+    },
+    {
+      "subpath": ".",
+      "name": "failover",
+      "kind": "function",
+      "signature": "export declare function failover(transports: readonly MailTransport[], options?: FailoverOptions): MailTransport;",
+      "jsdocSummary": "One transport that tries `transports` in order. Its id is theirs, joined by `|`."
+    },
+    {
+      "subpath": ".",
+      "name": "FailoverOptions",
+      "kind": "type",
+      "signature": "export type FailoverOptions = { /** Where sends are counted. Default: in this process only. */ readonly store?: QuotaStore; /** The clock, for tests. */ readonly now?: () => Date; };",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": ".",
+      "name": "inMemoryQuotaStore",
+      "kind": "function",
+      "signature": "export declare function inMemoryQuotaStore(): QuotaStore;",
+      "jsdocSummary": "Counts in this process only; resets on restart. Right for one instance and for tests."
+    },
+    {
+      "subpath": ".",
+      "name": "isMailError",
+      "kind": "function",
+      "signature": "export declare function isMailError(error: unknown): error is MailError;",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": ".",
+      "name": "KVLike",
+      "kind": "type",
+      "signature": "export type KVLike = { get(key: string, schema: typeof countSchema): Promise<number | undefined | Failure>; set(key: string, value: number, ttlSeconds?: number): Promise<boolean | Failure>; };",
+      "jsdocSummary": "The part of a key-value store `kvQuotaStore` needs. `@arki/kv` fits, so does a test double. `get` checks the stored value against the count schema and returns a failure when Redis is down or the value is not a count."
+    },
+    {
+      "subpath": ".",
+      "name": "kvQuotaStore",
+      "kind": "function",
+      "signature": "export declare function kvQuotaStore(kv: KVLike): QuotaStore;",
+      "jsdocSummary": "Counts shared by every replica through a key-value store. Keys: `email:quota:{transport}:{month}` (the prefix predates the package rename; changing it would reset live counters mid-month)."
+    },
+    {
+      "subpath": ".",
+      "name": "logTransport",
+      "kind": "function",
+      "signature": "export declare function logTransport(options?: { readonly id?: string; }): MailTransport;",
+      "jsdocSummary": "Sends nothing: logs each mail at debug level (`DEBUG=arki:mail`) and reports it as `simulated`. For local development, in place of a real transport."
+    },
+    {
+      "subpath": ".",
+      "name": "MAIL_ERROR_CODES",
+      "kind": "variable",
+      "signature": "export declare const MAIL_ERROR_CODES: { /** * No transport, a duplicate transport id, an empty key or sender, a transport SDK that cannot load. * * @fix Pass one transport with a unique id and a sender, and install the transport's SDK peer. * @verify bun run test -- src/mailer.spec.ts */ readonly invalidConfig: 'ARKI_MAIL_E001'; /** * A queued mail needs exactly one `to` recipient and no cc or bcc. (A message that cannot be * sent as written is the returned failure `MailInvalidMessage`, not this code.) * * @fix Queue one mail per recipient, with the recipient in `to` only. * @verify bun run test -- src/pg */ readonly invalidMessage: 'ARKI_MAIL_E002'; /** * A field the transport cannot carry. Thrown before any request. * * @fix Drop the field, or pick a transport that carries it (see the transport table in the README). * @verify bun run test -- src/message.spec.ts */ readonly unsupported: 'ARKI_MAIL_E005'; /** * A durable send was given the root database handle instead of a transaction. * * @fix Call `enqueue` inside `db.transaction(async tx => ...)` and pass `tx`. * @verify bun run test -- src/pg */ readonly needsTransaction: 'ARKI_MAIL_E009'; /** * A queue row does not hold a readable mail (a row edited by hand, or written by an older version). * (A mail over `maxBytes` is the returned failure `MailTooLarge`.) * * @fix Dead-letter the row and queue the mail again. * @verify bun run test -- src/pg */ readonly badQueuedData: 'ARKI_MAIL_E010'; };",
+      "jsdocSummary": "Stable codes for mistakes in how the package is used: bad config, a message that cannot be sent as written, data the queue cannot hold. They are thrown as {@link MailError}. A mail that is not sent for a reason the caller must expect is a returned failure instead (`failures.ts`)."
+    },
+    {
+      "subpath": ".",
+      "name": "MailContent",
+      "kind": "type",
+      "signature": "export type MailContent = { readonly subject: string; readonly text: string; readonly html?: string; readonly headers?: Readonly<Record<string, string>>; readonly tags?: Readonly<Record<string, string>>; };",
+      "jsdocSummary": "What a template produces. Every mail has a plain-text part."
+    },
+    {
+      "subpath": ".",
+      "name": "mailer",
+      "kind": "function",
+      "signature": "export declare function mailer(options: MailerOptions): Mailer;",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": ".",
+      "name": "Mailer",
+      "kind": "type",
+      "signature": "export type Mailer = { /** * Validates `input` with the template's schema, renders, and sends. Returns the sent mail or a * failure, including `MailInvalidMessage` for a message that cannot be sent as written. */ send<S extends StandardSchemaV1>(template: MailTemplate<S>, input: NoInfer<SchemaInput<S>>, options: SendOptions): Promise<Result<SentMail, SendFailure>>; /** Sends content you rendered yourself. */ sendRaw(message: RawMail, options?: Pick<SendOptions, 'idempotencyKey' | 'signal'>): Promise<Result<SentMail, SendRawFailure>>; /** * Renders, addresses and checks a mail without sending it: the sender is resolved and the * message validated (`MailInvalidMessage` when it cannot be sent as written). `@arki/mail/pg` * stores the result to send later. */ compose<S extends StandardSchemaV1>(template: MailTemplate<S>, input: NoInfer<SchemaInput<S>>, options: Omit<SendOptions, 'signal' | 'idempotencyKey'>): Promise<Result<MailMessage, FailureOf<typeof renderTemplate> | FailureOf<typeof MailInvalidMessage>>>; /** Renders without sending: previews and content tests. */ render<S extends StandardSchemaV1>(template: MailTemplate<S>, input: NoInfer<SchemaInput<S>>, context?: RenderContext): Promise<Result<MailContent, FailureOf<typeof renderTemplate>>>; };",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": ".",
+      "name": "MailerOptions",
+      "kind": "type",
+      "signature": "export type MailerOptions = { readonly transport: MailTransport; /** The sender when neither the send nor the template names one. */ readonly from: Address; /** Staging guard: every mail goes here instead; Cc and Bcc are dropped. */ readonly redirectTo?: Addresses; /** Observe each send. Errors thrown here are logged and never change the result. */ readonly onEvent?: (event: MailEvent) => Awaitable<void>; };",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": ".",
+      "name": "MailError",
+      "kind": "class",
+      "signature": "export declare class MailError extends Error { readonly code: MailErrorCode; constructor(code: MailErrorCode, message: string, options?: ErrorOptions); }",
+      "jsdocSummary": "A mistake in how the package is used. Match on `code`, never on the message."
+    },
+    {
+      "subpath": ".",
+      "name": "MailErrorCode",
+      "kind": "type",
+      "signature": "export type MailErrorCode = (typeof MAIL_ERROR_CODES)[keyof typeof MAIL_ERROR_CODES];",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": ".",
+      "name": "MailEvent",
+      "kind": "type",
+      "signature": "export type MailEvent = { readonly type: 'sending'; readonly transport: string; readonly template?: string; } | { readonly type: 'sent'; readonly result: SentMail; readonly template?: string; } | { readonly type: 'failed'; readonly failure: SendFailure; readonly template?: string; };",
+      "jsdocSummary": "What the mailer reports to `onEvent`. Observe only."
+    },
+    {
+      "subpath": ".",
+      "name": "MailExpired",
+      "kind": "variable",
+      "signature": "export declare const MailExpired: import(\"@arki/failure\").FailureDefinition<\"mail.expired\", import(\"@standard-schema/spec\").StandardSchemaV1<{ expiresAt: string; }, { expiresAt: string; }>>;",
+      "jsdocSummary": "A queued mail's `expiresAt` passed before it could be sent. Nothing was sent."
+    },
+    {
+      "subpath": ".",
+      "name": "MailInvalidInput",
+      "kind": "variable",
+      "signature": "export declare const MailInvalidInput: import(\"@arki/failure\").FailureDefinition<\"mail.invalid_input\", import(\"@standard-schema/spec\").StandardSchemaV1<{ template: string; issues: { path: (string | number)[]; message: string; }[]; }, { template: string; issues: { path: (string | number)[]; message: string; }[]; }>>;",
+      "jsdocSummary": "The template's schema refused the input. Nothing was sent."
+    },
+    {
+      "subpath": ".",
+      "name": "MailMessage",
+      "kind": "type",
+      "signature": "export type MailMessage = MailContent & Omit<SendOptions, 'signal' | 'idempotencyKey' | 'locale' | 'from'> & { readonly from: Address; /** The template name, for logs and the test sink. */ readonly template?: string; };",
+      "jsdocSummary": "A complete mail: content plus addressing. Independent of how it is sent."
+    },
+    {
+      "subpath": ".",
+      "name": "MailQuotaExhausted",
+      "kind": "variable",
+      "signature": "export declare const MailQuotaExhausted: import(\"@arki/failure\").FailureDefinition<\"mail.quota_exhausted\", import(\"@standard-schema/spec\").StandardSchemaV1<{ month: string; }, { month: string; }>>;",
+      "jsdocSummary": "Every transport is over its monthly quota. Nothing was sent."
+    },
+    {
+      "subpath": ".",
+      "name": "MailRejected",
+      "kind": "variable",
+      "signature": "export declare const MailRejected: import(\"@arki/failure\").FailureDefinition<\"mail.rejected\", import(\"@standard-schema/spec\").StandardSchemaV1<{ transport: string; retryable: boolean; upstreamStatus?: number | undefined; providerCode?: string | undefined; detail?: string | undefined; retryAfterMs?: number | undefined; }, { transport: string; retryable: boolean; upstreamStatus?: number | undefined; providerCode?: string | undefined; detail?: string | undefined; retryAfterMs?: number | undefined; }>>;",
+      "jsdocSummary": "The service refused the mail, so it surely did not take it. `retryable` is true for HTTP 429 and 5xx, when trying later can help. `upstreamStatus` is the service's HTTP status."
+    },
+    {
+      "subpath": ".",
+      "name": "MailTemplate",
+      "kind": "type",
+      "signature": "export type MailTemplate<S extends StandardSchemaV1 = StandardSchemaV1, Name extends string = string> = { /** Stable name, for logs, the test sink and queued mail. */ readonly name: Name; readonly input: S; readonly subject: (data: SchemaOutput<S>, context: RenderContext) => string; readonly text: (data: SchemaOutput<S>, context: RenderContext) => Awaitable<string>; readonly html?: (data: SchemaOutput<S>, context: RenderContext) => Awaitable<string>; readonly defaults?: { readonly from?: Address; readonly replyTo?: Addresses; readonly headers?: Readonly<Record<string, string>>; readonly tags?: Readonly<Record<string, string>>; }; };",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": ".",
+      "name": "MailTransport",
+      "kind": "type",
+      "signature": "export type MailTransport = { /** Stable name for logs and quota counters; unique within a mailer. */ readonly id: string; /** Monthly budget, counted per UTC month by `failover`. Omit for none. */ readonly quotaPerMonth?: number; /** * The sent mail, or a returned failure for what the service answered. Throws only `MailError` * (`ARKI_MAIL_E005`) for a field it cannot carry, before any request. */ send(message: MailMessage, options: { readonly idempotencyKey?: string; readonly signal?: AbortSignal; }): Promise<Result<SentMail, TransportFailure>>; };",
+      "jsdocSummary": "Sends one mail through one service."
+    },
+    {
+      "subpath": ".",
+      "name": "MailUncertain",
+      "kind": "variable",
+      "signature": "export declare const MailUncertain: import(\"@arki/failure\").FailureDefinition<\"mail.uncertain\", import(\"@standard-schema/spec\").StandardSchemaV1<{ transport: string; detail: string; upstreamStatus?: number | undefined; reason?: \"cancelled\" | \"network\" | \"timeout\" | \"unreadable\" | undefined; }, { transport: string; detail: string; upstreamStatus?: number | undefined; reason?: \"cancelled\" | \"network\" | \"timeout\" | \"unreadable\" | undefined; }>>;",
+      "jsdocSummary": "No readable answer: a timeout, a network failure, or an answer that could not be read. The service may have taken the mail, so trying another service could deliver it twice."
+    },
+    {
+      "subpath": ".",
+      "name": "QuotaStore",
+      "kind": "type",
+      "signature": "export type QuotaStore = { /** Sends counted for `transport` in `month` (`YYYY-MM`, UTC). A failure means the count could not be read. */ getSent(transport: string, month: string): Promise<number | Failure>; /** Counts one accepted send. A failure means the count could not be stored. */ increment(transport: string, month: string): Promise<void | Failure>; };",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": ".",
+      "name": "RawMail",
+      "kind": "type",
+      "signature": "export type RawMail = Omit<MailMessage, 'from'> & { readonly from?: Address; };",
+      "jsdocSummary": "A message for `sendRaw`: the sender may come from the mailer."
+    },
+    {
+      "subpath": ".",
+      "name": "RecipientOutcome",
+      "kind": "type",
+      "signature": "export type RecipientOutcome = { readonly address: string; readonly status: 'accepted' | 'rejected' | 'suppressed' | 'unknown'; };",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": ".",
+      "name": "RenderContext",
+      "kind": "type",
+      "signature": "export type RenderContext = { readonly locale?: string; };",
+      "jsdocSummary": "Passed to every renderer."
+    },
+    {
+      "subpath": ".",
+      "name": "renderTemplate",
+      "kind": "function",
+      "signature": "export declare function renderTemplate<S extends StandardSchemaV1>(template: MailTemplate<S>, input: NoInfer<SchemaInput<S>>, context?: RenderContext): Promise<import(\"@arki/failure\").Failure<\"mail.invalid_input\", { template: string; issues: { path: (string | number)[]; message: string; }[]; }> | import(\"@arki/failure\").Failure<\"schema.validator_defect\", undefined> | { subject: string; text: string; html?: string | undefined; headers?: Readonly<Record<string, string>> | undefined; tags?: Readonly<Record<string, string>> | undefined; }>;",
+      "jsdocSummary": "Validates `input` with the template's schema (sync or async) and renders the content. Needs no transport: use it for previews and content tests. Bad input is `MailInvalidInput` with the schema's issues."
+    },
+    {
+      "subpath": ".",
+      "name": "SendFailure",
+      "kind": "type",
+      "signature": "export type SendFailure = SendRawFailure | FailureOf<typeof renderTemplate>;",
+      "jsdocSummary": "What a send returns in place of a sent mail: a transport failure, a bad message, or input the template refused."
+    },
+    {
+      "subpath": ".",
+      "name": "SendOptions",
+      "kind": "type",
+      "signature": "export type SendOptions = { readonly to: Addresses; /** The template's default, then the mailer's. */ readonly from?: Address; readonly cc?: Addresses; readonly bcc?: Addresses; readonly replyTo?: Addresses; /** Forwarded to transports that support it, so a retried send is not delivered twice. */ readonly idempotencyKey?: string; readonly signal?: AbortSignal; readonly locale?: string; };",
+      "jsdocSummary": "Per send: who receives it, and how the send behaves."
+    },
+    {
+      "subpath": ".",
+      "name": "SentMail",
+      "kind": "type",
+      "signature": "export type SentMail = { /** The provider's message id, or `null` when it gives none. Never made up. */ readonly id: string | null; readonly transport: string; /** `simulated`: nothing left the process (log transport, test sink). */ readonly status: 'accepted' | 'partial' | 'simulated'; readonly recipients: readonly RecipientOutcome[]; };",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": ".",
+      "name": "TransportFailure",
+      "kind": "type",
+      "signature": "export type TransportFailure = FailureOf<typeof MailRejected> | FailureOf<typeof MailUncertain> | FailureOf<typeof MailQuotaExhausted>;",
+      "jsdocSummary": "What a transport returns in place of a sent mail. `failover` adds the quota failure."
+    },
+    {
+      "subpath": "./dot",
+      "name": "mail",
+      "kind": "function",
+      "signature": "export declare function mail(options: MailerOptions | (() => MailerOptions)): Omit<import(\"@arki/dot/unit\").Unit<import(\"@arki/dot/unit\").WireNeeds<import(\"@arki/dot/unit\").EmptyShape>, import(\"@arki/dot/unit\").ProvidedValues<{ mail: import(\"./mailer.js\").Mailer; }>, import(\"@arki/dot/unit\").EmptyShape, \"mail\", import(\"@arki/dot/unit\").EmptyOwnership, import(\"@arki/dot/unit\").EmptyPhases>, \"factories\" | \"hooks\" | \"logging\"> & import(\"@arki/dot/unit\").LoggingSlot<import(\"@arki/dot/unit\").DotLoggingHandle<undefined>> & import(\"@arki/dot/unit\").FactoryContract<import(\"@arki/dot/unit\").ProvidedValues<{ mail: import(\"./mailer.js\").Mailer; }>> & { readonly factories: { readonly mail: (ctx: never) => import(\"./mailer.js\").Mailer; }; readonly hooks: import(\"@arki/dot/unit\").PhaseHooks<never, { readonly configure: undefined; readonly start: undefined; readonly stop: undefined; readonly dispose: undefined; }, import(\"@arki/dot/unit\").DotConfigureContext> & import(\"@arki/dot/unit\").BootSlot<import(\"@arki/dot/unit\").CtxOf<import(\"@arki/dot/unit\").EmptyShape> & import(\"@arki/dot/unit\").ProvidedValues<{ mail: import(\"./mailer.js\").Mailer; }> & import(\"@arki/dot/unit\").KernelCtx, undefined>; } & import(\"@arki/dot/unit\").InfraRole;",
+      "jsdocSummary": "The mailer as a Dot service named `mail`."
+    },
+    {
+      "subpath": "./http/cloudflare",
+      "name": "cloudflare",
+      "kind": "function",
+      "signature": "export declare function cloudflare(options: CloudflareOptions): MailTransport;",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": "./http/cloudflare",
+      "name": "CloudflareOptions",
+      "kind": "type",
+      "signature": "export type CloudflareOptions = { /** Default `'cloudflare'`. */ readonly id?: string; /** Cloudflare account id (32 hex characters). */ readonly accountId: string; /** API token with the `Email Sending: Edit` permission. */ readonly apiToken: string; /** Monthly budget for `failover`. Workers Paid includes 3 000. */ readonly quotaPerMonth?: number; /** For tests. Default `globalThis.fetch`. */ readonly fetch?: FetchFn; /** Longest wait for the service to answer, in milliseconds. Default 30 000. */ readonly timeoutMs?: number; };",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": "./http/mailpit",
+      "name": "mailpit",
+      "kind": "function",
+      "signature": "export declare function mailpit(options: MailpitOptions): MailTransport;",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": "./http/mailpit",
+      "name": "MailpitOptions",
+      "kind": "type",
+      "signature": "export type MailpitOptions = { /** Default `'mailpit'`. */ readonly id?: string; /** Where Mailpit's HTTP API listens, for example `http://localhost:8025`. */ readonly baseUrl: string; /** For tests. Default `globalThis.fetch`. */ readonly fetch?: FetchFn; /** Longest wait for Mailpit to answer, in milliseconds. Default 30 000. */ readonly timeoutMs?: number; };",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": "./http/resend",
+      "name": "resend",
+      "kind": "function",
+      "signature": "export declare function resend(options: ResendOptions): MailTransport;",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": "./http/resend",
+      "name": "ResendOptions",
+      "kind": "type",
+      "signature": "export type ResendOptions = { /** Default `'resend'`. Set it when two Resend accounts share one mailer. */ readonly id?: string; /** API key, starts with `re_`. */ readonly apiKey: string; /** Monthly budget for `failover`. Free tier: 3 000. */ readonly quotaPerMonth?: number; /** For tests. Default `globalThis.fetch`. */ readonly fetch?: FetchFn; /** Longest wait for Resend to answer, in milliseconds. Default 30 000. */ readonly timeoutMs?: number; };",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": "./http/unosend",
+      "name": "unosend",
+      "kind": "function",
+      "signature": "export declare function unosend(options: UnosendOptions): MailTransport;",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": "./http/unosend",
+      "name": "UnosendOptions",
+      "kind": "type",
+      "signature": "export type UnosendOptions = { /** Default `'unosend'`. */ readonly id?: string; readonly apiKey: string; /** Monthly budget for `failover`. */ readonly quotaPerMonth?: number; /** For tests. Default `globalThis.fetch`. */ readonly fetch?: FetchFn; /** Longest wait for the service to answer, in milliseconds. Default 30 000. */ readonly timeoutMs?: number; };",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": "./node/ses",
+      "name": "ses",
+      "kind": "function",
+      "signature": "export declare function ses(options: SesOptions): MailTransport;",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": "./node/ses",
+      "name": "SesOptions",
+      "kind": "type",
+      "signature": "export type SesOptions = { /** Default `'ses'`. */ readonly id?: string; /** The SES region, e.g. `'eu-west-1'`. */ readonly region: string; /** Omit to use the SDK's default chain (environment, shared config, instance role). */ readonly credentials?: { readonly accessKeyId: string; readonly secretAccessKey: string; readonly sessionToken?: string; }; /** Configuration set for event publishing, reputation and IP pools. */ readonly configurationSetName?: string; /** Monthly budget for `failover`. */ readonly quotaPerMonth?: number; /** Longest wait for SES to answer, in milliseconds. Default 30 000. */ readonly timeoutMs?: number; };",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": "./outbox",
+      "name": "mailJobs",
+      "kind": "function",
+      "signature": "export declare function mailJobs(): JobsSource<{ readonly mailOutbox: Service<MailOutbox>; }>;",
+      "jsdocSummary": "The queued-mail runner for `journalWorker({ jobs })`. A worker without `mailOutbox` fails at boot."
+    },
+    {
+      "subpath": "./outbox",
+      "name": "mailOutboxPlugin",
+      "kind": "function",
+      "signature": "export declare function mailOutboxPlugin(options: MailOutboxPluginOptions): Omit<import(\"@arki/dot/unit\").Unit<import(\"@arki/dot/unit\").WireNeeds<{ mail: Service<Mailer>; }>, import(\"@arki/dot/unit\").ProvidedValues<{ mailOutbox: MailOutbox; }>, { mail: Service<Mailer>; }, \"mail-outbox\", import(\"@arki/dot/unit\").EmptyOwnership, import(\"@arki/dot/unit\").EmptyPhases>, \"factories\" | \"hooks\" | \"logging\"> & import(\"@arki/dot/unit\").LoggingSlot<import(\"@arki/dot/unit\").DotLoggingHandle<undefined>> & import(\"@arki/dot/unit\").FactoryContract<import(\"@arki/dot/unit\").ProvidedValues<{ mailOutbox: MailOutbox; }>> & { readonly factories: { readonly mailOutbox: (ctx: never) => MailOutbox; }; readonly hooks: import(\"@arki/dot/unit\").PhaseHooks<never, { readonly configure: undefined; readonly start: undefined; readonly stop: undefined; readonly dispose: undefined; }, import(\"@arki/dot/unit\").DotConfigureContext> & import(\"@arki/dot/unit\").BootSlot<import(\"@arki/dot/unit\").CtxOf<{ mail: Service<Mailer>; }> & import(\"@arki/dot/unit\").ProvidedValues<{ mailOutbox: MailOutbox; }> & import(\"@arki/dot/unit\").KernelCtx, undefined>; } & import(\"@arki/dot/unit\").InfraRole;",
+      "jsdocSummary": "Queued mail on the journal as a Dot service named `mailOutbox`. Needs the `mail` service."
+    },
+    {
+      "subpath": "./outbox",
+      "name": "MailOutboxPluginOptions",
+      "kind": "type",
+      "signature": "export type MailOutboxPluginOptions = { readonly tables: Pick<JournalTables, 'jobs'>; /** Waits between tries. Default: 5 s doubling to 1 h, 5 tries in all. */ readonly retry?: Backoff; /** Largest stored message, in bytes of JSON. Default 256 KiB. */ readonly maxBytes?: number; };",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": "./pg",
+      "name": "EnqueueOptions",
+      "kind": "type",
+      "signature": "export type EnqueueOptions = Omit<SendOptions, 'signal'> & { /** After this moment the mail is not sent; the job is dead with `MailExpired`. */ readonly expiresAt?: Date; };",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": "./pg",
+      "name": "MAIL_JOB",
+      "kind": "variable",
+      "signature": "export declare const MAIL_JOB = \"mail.deliver.v1\";",
+      "jsdocSummary": "The queue row's job name. The version is part of the stored shape."
+    },
+    {
+      "subpath": "./pg",
+      "name": "mailOutbox",
+      "kind": "function",
+      "signature": "export declare function mailOutbox(options: MailOutboxOptions): MailOutbox;",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": "./pg",
+      "name": "MailOutbox",
+      "kind": "type",
+      "signature": "export type MailOutbox = { /** * Queues one mail inside `tx`. Returns `MailInvalidInput` when the template's schema refuses * the input, `MailInvalidMessage` when the message cannot be sent as written (an empty address, * a line break), and `MailTooLarge` when it is over `maxBytes`; nothing is queued. Throws * {@link MailError}: `E009` for the root database, `E002` unless there is exactly one `to` * recipient. The same `idempotencyKey` while a job is still queued returns that job (`deduped: true`). */ enqueue<S extends StandardSchemaV1>(tx: MailTx, template: MailTemplate<S>, input: NoInfer<SchemaInput<S>>, options: EnqueueOptions): Promise<{ readonly jobId: string; readonly deduped: boolean; } | FailureOf<typeof renderTemplate> | FailureOf<typeof MailInvalidMessage> | FailureOf<typeof MailTooLarge> | FailureOf<typeof jobId>>; /** Runs queued mail: pass it to `journal.worker(db, { jobs })`, or combine it with `combineRunners`. */ readonly runner: JobRunner; };",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": "./pg",
+      "name": "MailOutboxOptions",
+      "kind": "type",
+      "signature": "export type MailOutboxOptions = { readonly mailer: Mailer; readonly tables: Pick<JournalTables, 'jobs'>; /** Waits between tries. Default: 5 s doubling to 1 h, 5 tries in all. */ readonly retry?: Backoff; /** Largest stored message, in bytes of JSON. Default 256 KiB. */ readonly maxBytes?: number; };",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": "./pg",
+      "name": "MailTx",
+      "kind": "type",
+      "signature": "export type MailTx = DbHandle & { rollback(): never; };",
+      "jsdocSummary": "A transaction: it has `rollback()`, which the root database does not."
+    },
+    {
+      "subpath": "./pg/testing",
+      "name": "mailQueueAssertions",
+      "kind": "function",
+      "signature": "export declare function mailQueueAssertions(db: DbHandle, tables: Pick<JournalTables, 'jobs'>): { /** Mail waiting to be sent (or to be retried), optionally of one template. */ queued: (template?: { readonly name: string; }) => Promise<readonly QueuedMail[]>; /** Mail that ran out of tries or failed for good. */ dead: () => Promise<readonly QueuedMail[]>; };",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": "./pg/testing",
+      "name": "QueuedMail",
+      "kind": "type",
+      "signature": "export type QueuedMail = { readonly jobId: string; readonly template: string | undefined; readonly to: string | readonly string[]; readonly subject: string; readonly text: string; readonly attempts: number; readonly lastError: string | null; readonly idempotencyKey: string | null; };",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": "./react",
+      "name": "renderReact",
+      "kind": "function",
+      "signature": "export declare function renderReact(element: ReactElement): Promise<{ html: string; text: string; }>;",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": "./react/templates/magic-link",
+      "name": "default",
+      "kind": "variable",
+      "signature": "export declare const MagicLinkEmail: ({ loginUrl, appName, appUrl, }: MagicLinkEmailProps) => import(\"react\").JSX.Element;",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": "./react/templates/magic-link",
+      "name": "MagicLinkEmail",
+      "kind": "variable",
+      "signature": "export declare const MagicLinkEmail: ({ loginUrl, appName, appUrl, }: MagicLinkEmailProps) => import(\"react\").JSX.Element;",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": "./react/templates/magic-link-minimal",
+      "name": "default",
+      "kind": "variable",
+      "signature": "export declare const MinimalMagicLinkEmail: ({ loginUrl, appUrl, appKey, appDescription, }: MinimalMagicLinkEmailProps) => import(\"react\").JSX.Element;",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": "./react/templates/magic-link-minimal",
+      "name": "MinimalMagicLinkEmail",
+      "kind": "variable",
+      "signature": "export declare const MinimalMagicLinkEmail: ({ loginUrl, appUrl, appKey, appDescription, }: MinimalMagicLinkEmailProps) => import(\"react\").JSX.Element;",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": "./templates/auth",
+      "name": "AuthLinkData",
+      "kind": "type",
+      "signature": "export type AuthLinkData = { readonly appName: string; readonly url: string; readonly expiresInMinutes: number; };",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": "./templates/auth",
+      "name": "AuthLinkInput",
+      "kind": "type",
+      "signature": "export type AuthLinkInput = { readonly appName: string; readonly url: string; readonly expiresInMinutes?: number; };",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": "./templates/auth",
+      "name": "magicLink",
+      "kind": "variable",
+      "signature": "export declare const magicLink: MailTemplate<StandardSchemaV1<AuthLinkInput, AuthLinkData>, \"auth.magic-link\">;",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": "./templates/auth",
+      "name": "resetPassword",
+      "kind": "variable",
+      "signature": "export declare const resetPassword: MailTemplate<StandardSchemaV1<AuthLinkInput, AuthLinkData>, \"auth.reset-password\">;",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": "./templates/auth",
+      "name": "signInCode",
+      "kind": "variable",
+      "signature": "export declare const signInCode: MailTemplate<StandardSchemaV1<SignInCodeInput, SignInCodeInput>, \"auth.sign-in-code\">;",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": "./templates/auth",
+      "name": "SignInCodeInput",
+      "kind": "type",
+      "signature": "export type SignInCodeInput = { readonly appName: string; readonly code: string; };",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": "./templates/auth",
+      "name": "verifyEmail",
+      "kind": "variable",
+      "signature": "export declare const verifyEmail: MailTemplate<StandardSchemaV1<AuthLinkInput, AuthLinkData>, \"auth.verify-email\">;",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": "./testing",
+      "name": "mailSink",
+      "kind": "function",
+      "signature": "export declare function mailSink(): MailSink;",
+      "jsdocSummary": "A transport that sends nothing and records each mail, reported as `simulated`."
+    },
+    {
+      "subpath": "./testing",
+      "name": "MailSink",
+      "kind": "type",
+      "signature": "export type MailSink = MailTransport & { /** Every mail taken, oldest first. Failed sends are not recorded. */ readonly sent: readonly SentRecord[]; /** Mails rendered from `template`. */ sentWith<S extends StandardSchemaV1, Name extends string>(template: MailTemplate<S, Name>): readonly SentRecord<Name>[]; /** Mails with `address` in To, Cc or Bcc. `Name <a@b>` matches `a@b`; case is ignored. */ sentTo(address: string): readonly SentRecord[]; /** The latest mail taken. */ last(): SentRecord | undefined; /** The next send returns this failure (default: a `MailRejected` that is not retryable). Only the next one. */ failNext(failure?: TransportFailure): void; /** Forgets every mail and any pending `failNext`. */ clear(): void; };",
+      "jsdocSummary": ""
+    },
+    {
+      "subpath": "./testing",
+      "name": "SentRecord",
+      "kind": "type",
+      "signature": "export type SentRecord<Name extends string | undefined = string | undefined> = { readonly message: MailMessage; readonly template: Name; readonly idempotencyKey: string | undefined; };",
+      "jsdocSummary": "One mail the sink took. `template` is the template's name (`undefined` for `sendRaw`). The template's input is not recorded: a transport only sees the rendered message."
+    },
+    {
+      "subpath": "./testing",
+      "name": "transportContract",
+      "kind": "function",
+      "signature": "export declare function transportContract(harness: TransportHarness): void;",
+      "jsdocSummary": "Defines the shared transport suite for one harness. Call it at the top level of a spec file."
+    },
+    {
+      "subpath": "./testing",
+      "name": "TransportHarness",
+      "kind": "type",
+      "signature": "export type TransportHarness = { /** Name for the describe block. */ readonly label: string; /** The `id` the factory gives when none is passed. */ readonly defaultId: string; /** Builds the transport under test, wired to the fake service. */ create(options?: { readonly quotaPerMonth?: number; }): MailTransport; /** The message id the fake service returns on success, or `null` when the service gives none. */ readonly expectedId: string | null; /** The next request succeeds. */ succeed(): void; /** The next request is answered with this HTTP status and the service's error body. */ respondWith(status: number): void; /** The next request fails in transit with this message. */ failInTransit(message: string): void; /** Requests the fake service received since `reset`. */ requestCount(): number; /** The idempotency key the last request carried. Omit when the service takes none. */ readonly lastIdempotencyKey?: () => string | undefined; /** The abort signal the last request carried, if any. */ lastSignal(): AbortSignal | undefined; /** Message fields this transport cannot carry. Omit when it carries them all. */ readonly unsupported?: Partial<Pick<MailMessage, 'tags' | 'replyTo'>>; /** Clears the fake service between tests. */ reset(): void; };",
+      "jsdocSummary": ""
+    }
+  ],
+  "groups": [],
+  "errorCodes": [
+    "ARKI_MAIL_E001",
+    "ARKI_MAIL_E002",
+    "ARKI_MAIL_E005",
+    "ARKI_MAIL_E009",
+    "ARKI_MAIL_E010",
+    "mail.expired",
+    "mail.invalid_input",
+    "mail.invalid_message",
+    "mail.quota_exhausted",
+    "mail.rejected",
+    "mail.too_large",
+    "mail.uncertain"
+  ]
+}

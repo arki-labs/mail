@@ -1,0 +1,149 @@
+/**
+ * Amazon SES (v2 API) through `@aws-sdk/client-sesv2`, an optional peer loaded on the first send.
+ *
+ * The SDK client is built with `maxAttempts: 1`: the SDK does not retry on its own. Retries belong
+ * to the caller (the journal worker for queued mail), which knows how many tries are left.
+ * SES has no idempotency token, so `idempotencyKey` is not forwarded. Tags go out as SES
+ * `EmailTags`, whose names and values SES limits to ASCII letters, digits, `_` and `-`.
+ *
+ * SES needs SPF, DKIM and DMARC on the sending domain, and new accounts start in the sandbox
+ * (200 mails a day, verified recipients only). Bounces and complaints arrive through SNS or a
+ * configuration set, not in the response.
+ */
+import type { MailTransport } from '../types.js';
+import { MAIL_ERROR_CODES, MailError } from '../errors.js';
+import { errorField } from '../log.js';
+import { listOf } from '../message.js';
+import { readAnswer, sesErrorSchema, sesResponseHeadersSchema } from '../http/answers.js';
+import { everyRecipient, logged, rejection, requestSignal, retryAfterMs, uncertain } from '../transport-failures.js';
+
+export type SesOptions = {
+  /** Default `'ses'`. */
+  readonly id?: string;
+  /** The SES region, e.g. `'eu-west-1'`. */
+  readonly region: string;
+  /** Omit to use the SDK's default chain (environment, shared config, instance role). */
+  readonly credentials?: {
+    readonly accessKeyId: string;
+    readonly secretAccessKey: string;
+    readonly sessionToken?: string;
+  };
+  /** Configuration set for event publishing, reputation and IP pools. */
+  readonly configurationSetName?: string;
+  /** Monthly budget for `failover`. */
+  readonly quotaPerMonth?: number;
+  /** Longest wait for SES to answer, in milliseconds. Default 30 000. */
+  readonly timeoutMs?: number;
+};
+
+// SES's documented charset name. SES expects this exact spelling, not Node's `utf8`.
+// eslint-disable-next-line unicorn/text-encoding-identifier-case -- SES API value, not a Node encoding
+const SES_CHARSET = 'UTF-8';
+
+/** Memoizes the first call's promise; a rejected load is tried again on the next send. */
+function once<T>(load: () => Promise<T>): () => Promise<T> {
+  let pending: Promise<T> | undefined;
+  return () => {
+    pending ??= load().catch((error: unknown) => {
+      pending = undefined;
+      throw error;
+    });
+    return pending;
+  };
+}
+
+/**
+ * An SDK error with an HTTP status came from SES. Without one, the request never got an answer
+ * (network failure, timeout, abort), and SES may have taken the mail. `reason` says which ended it.
+ * A throttled answer (429) carries the `Retry-After` header the SDK keeps in `$response`, when present.
+ */
+function sdkFailure(transport: string, error: unknown, reason: () => 'cancelled' | 'timeout' | 'network') {
+  const read = readAnswer(sesErrorSchema, error);
+  const status = read?.$metadata?.httpStatusCode;
+  if (status === undefined) return uncertain(transport, error, reason());
+  const providerCode = read?.name;
+  return rejection(transport, status, {
+    message: errorField(error).message,
+    ...(providerCode === undefined ? {} : { providerCode }),
+    ...(retryAfter(error) === undefined ? {} : { retryAfterMs: retryAfter(error) }),
+  });
+}
+
+/** `Retry-After` from the raw HTTP response the SDK attaches to a service error, when it kept one. */
+function retryAfter(error: unknown): number | undefined {
+  const headers = readAnswer(sesResponseHeadersSchema, error)?.$response?.headers;
+  return retryAfterMs(headers?.['retry-after']);
+}
+
+/**
+ * @example
+ * ses({ region: 'eu-west-1', quotaPerMonth: 200_000 })
+ */
+export function ses(options: SesOptions): MailTransport {
+  const id = options.id ?? 'ses';
+  const loadSdk = once(async () => {
+    const { SESv2Client, SendEmailCommand } = await import('@aws-sdk/client-sesv2');
+    const client = new SESv2Client({
+      region: options.region,
+      maxAttempts: 1,
+      ...(options.credentials === undefined ? {} : { credentials: options.credentials }),
+    });
+    return { client, SendEmailCommand };
+  });
+
+  return {
+    id,
+    ...(options.quotaPerMonth === undefined ? {} : { quotaPerMonth: options.quotaPerMonth }),
+    async send(message, sendOptions) {
+      let sdk: Awaited<ReturnType<typeof loadSdk>>;
+      try {
+        sdk = await loadSdk();
+      } catch (error) {
+        // A missing peer is a setup mistake, not an answer from SES.
+        throw new MailError(
+          MAIL_ERROR_CODES.invalidConfig,
+          `${id}: @aws-sdk/client-sesv2 could not be loaded (${errorField(error).message})`,
+          { cause: error },
+        );
+      }
+      const replyTo = listOf(message.replyTo);
+      const command = new sdk.SendEmailCommand({
+        FromEmailAddress: message.from,
+        Destination: {
+          ToAddresses: [...listOf(message.to)],
+          ...(message.cc === undefined ? {} : { CcAddresses: [...listOf(message.cc)] }),
+          ...(message.bcc === undefined ? {} : { BccAddresses: [...listOf(message.bcc)] }),
+        },
+        ...(replyTo.length === 0 ? {} : { ReplyToAddresses: [...replyTo] }),
+        ...(message.tags === undefined
+          ? {}
+          : { EmailTags: Object.entries(message.tags).map(([Name, Value]) => ({ Name, Value })) }),
+        Content: {
+          Simple: {
+            Subject: { Data: message.subject, Charset: SES_CHARSET },
+            Body: {
+              Text: { Data: message.text, Charset: SES_CHARSET },
+              ...(message.html === undefined ? {} : { Html: { Data: message.html, Charset: SES_CHARSET } }),
+            },
+            ...(message.headers === undefined
+              ? {}
+              : { Headers: Object.entries(message.headers).map(([Name, Value]) => ({ Name, Value })) }),
+          },
+        },
+        ...(options.configurationSetName === undefined ? {} : { ConfigurationSetName: options.configurationSetName }),
+      });
+      const attempt = requestSignal(sendOptions.signal, options.timeoutMs);
+      try {
+        const response = await sdk.client.send(command, { abortSignal: attempt.signal });
+        return logged(id, {
+          id: response.MessageId ?? null,
+          transport: id,
+          status: 'accepted',
+          recipients: everyRecipient(message, 'accepted'),
+        });
+      } catch (error) {
+        return logged(id, sdkFailure(id, error, attempt.reason));
+      }
+    },
+  };
+}

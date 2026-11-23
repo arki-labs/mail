@@ -1,5 +1,5 @@
 export { isMailError, MAIL_ERROR_CODES, MailError } from './errors.js';
-export { MailExpired, MailInvalidInput, MailQuotaExhausted, MailRejected, MailUncertain } from './failures.js';
+export { MailEnqueueContended, MailExpired, MailInvalidInput, MailInvalidMessage, MailQuotaExhausted, MailRejected, MailTooLarge, MailUncertain, } from './failures.js';
 export { defineTemplate, renderTemplate } from './template.js';
 export { mailer } from './mailer.js';
 export { failover } from './failover.js';

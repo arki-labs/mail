@@ -1,7 +1,7 @@
 export type { Address, Addresses, Awaitable, MailContent, MailEvent, MailMessage, MailTransport, RecipientOutcome, RenderContext, SendFailure, SendOptions, SentMail, TransportFailure, } from './types.js';
 export type { MailErrorCode } from './errors.js';
 export { isMailError, MAIL_ERROR_CODES, MailError } from './errors.js';
-export { MailExpired, MailInvalidInput, MailQuotaExhausted, MailRejected, MailUncertain } from './failures.js';
+export { MailEnqueueContended, MailExpired, MailInvalidInput, MailInvalidMessage, MailQuotaExhausted, MailRejected, MailTooLarge, MailUncertain, } from './failures.js';
 export type { MailTemplate } from './template.js';
 export { defineTemplate, renderTemplate } from './template.js';
 export type { Mailer, MailerOptions, RawMail } from './mailer.js';

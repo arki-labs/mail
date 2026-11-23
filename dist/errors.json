@@ -3,10 +3,10 @@
     "code": "ARKI_MAIL_E001",
     "package": "@arki/mail",
     "kind": "thrown",
-    "what": "No transport, a duplicate transport id, an empty key or sender, a transport SDK that cannot load.",
+    "what": "No transport, a duplicate transport id, an empty key or sender, a transport SDK that cannot load, a transport `timeoutMs` that is not more than 0 and at most 2^31 - 1, an API key or token (or an SES key id or session token) holding a line break, a NUL character or a character above U+00FF, a Mailpit `baseUrl` that is not an http(s) URL without credentials, an empty or malformed Cloudflare `accountId`, an SES `region` that is not a host name label, a `quotaPerMonth` that is not a whole number of at least 0, or an outbox `maxBytes` that is not a whole number above 0.",
     "fix": "Pass one transport with a unique id and a sender, and install the transport's SDK peer.",
     "verify": "bun run test -- src/mailer.spec.ts",
-    "source": "src/errors.ts:14"
+    "source": "src/errors.ts:19"
   },
   {
     "code": "ARKI_MAIL_E002",
@@ -15,7 +15,7 @@
     "what": "A queued mail needs exactly one `to` recipient and no cc or bcc. (A message that cannot be sent as written is the returned failure `MailInvalidMessage`, not this code.)",
     "fix": "Queue one mail per recipient, with the recipient in `to` only.",
     "verify": "bun run test -- src/pg",
-    "source": "src/errors.ts:22"
+    "source": "src/errors.ts:27"
   },
   {
     "code": "ARKI_MAIL_E005",
@@ -24,7 +24,7 @@
     "what": "A field the transport cannot carry. Thrown before any request.",
     "fix": "Drop the field, or pick a transport that carries it (see the transport table in the README).",
     "verify": "bun run test -- src/message.spec.ts",
-    "source": "src/errors.ts:29"
+    "source": "src/errors.ts:34"
   },
   {
     "code": "ARKI_MAIL_E009",
@@ -33,7 +33,7 @@
     "what": "A durable send was given the root database handle instead of a transaction.",
     "fix": "Call `enqueue` inside `db.transaction(async tx => ...)` and pass `tx`.",
     "verify": "bun run test -- src/pg",
-    "source": "src/errors.ts:36"
+    "source": "src/errors.ts:41"
   },
   {
     "code": "ARKI_MAIL_E010",
@@ -42,7 +42,16 @@
     "what": "A queue row does not hold a readable mail (a row edited by hand, or written by an older version). (A mail over `maxBytes` is the returned failure `MailTooLarge`.)",
     "fix": "Dead-letter the row and queue the mail again.",
     "verify": "bun run test -- src/pg",
-    "source": "src/errors.ts:44"
+    "source": "src/errors.ts:49"
+  },
+  {
+    "code": "mail.enqueue_contended",
+    "package": "@arki/mail",
+    "kind": "failure",
+    "what": "Other writers kept winning this mail's `idempotencyKey` while `enqueue` queued it: each time the dedupe index refused the insert, the job that held the key was gone before it could be read. Nothing was queued. Only constant contention on one key causes this.",
+    "fix": "Retry the write; the key settles once the other writers finish.",
+    "verify": "bun run test -- src/pg",
+    "source": "src/failures.ts:151"
   },
   {
     "code": "mail.expired",
@@ -66,10 +75,10 @@
     "code": "mail.invalid_message",
     "package": "@arki/mail",
     "kind": "failure",
-    "what": "The message cannot be sent as written: no recipient, an empty address, a line break in an address, the subject or a header (header injection), or a header the message owns. Nothing was sent. Recipients are usually typed by a user, so this is an expected outcome, not a bug.",
-    "fix": "Show the user what is wrong with the address, or remove the line break or reserved header. The same message fails again.",
+    "what": "The message cannot be sent as written: no recipient, an empty address, a line break in an address, the subject or a header (header injection), a header the message owns, or a NUL character (U+0000) or a lone surrogate (such as U+D800 alone) in any field. `send` and `sendRaw` also return it for an `idempotencyKey` holding a line break, a NUL character or a character above U+00FF (it travels as an HTTP header). `enqueue` also returns it for an `idempotencyKey` that is empty, holds NUL or a lone surrogate, or is over 256 characters (the journal's dedupe column), and for an `expiresAt` that is an Invalid Date. Nothing was sent or queued. Recipients are usually typed by a user, so this is an expected outcome, not a bug.",
+    "fix": "Show the user what is wrong with the address, or remove the line break, NUL character, lone surrogate or reserved header. The same message fails again.",
     "verify": "bun run test -- src/message.spec.ts",
-    "source": "src/failures.ts:117"
+    "source": "src/failures.ts:123"
   },
   {
     "code": "mail.quota_exhausted",
@@ -96,7 +105,7 @@
     "what": "The rendered message is larger than the outbox allows (`maxBytes`). Nothing was queued.",
     "fix": "Shorten the content, or raise `maxBytes`. Put large files elsewhere and link them.",
     "verify": "bun run test -- src/pg",
-    "source": "src/failures.ts:130"
+    "source": "src/failures.ts:136"
   },
   {
     "code": "mail.uncertain",

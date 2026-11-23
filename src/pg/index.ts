@@ -26,16 +26,26 @@ import type { Mailer } from '../mailer.js';
 import type { MailTemplate, renderTemplate } from '../template.js';
 import type { SendOptions } from '../types.js';
 import type { QueuedArgs } from './args.js';
-import { isMailError, MAIL_ERROR_CODES, MailError } from '../errors.js';
-import type { MailInvalidMessage } from '../failures.js';
-import { MailExpired, MailRejected, MailTooLarge, MailUncertain } from '../failures.js';
-import { listOf } from '../message.js';
+import { invalidConfig, isMailError, MAIL_ERROR_CODES, MailError } from '../errors.js';
+import {
+  MailEnqueueContended,
+  MailExpired,
+  MailInvalidMessage,
+  MailRejected,
+  MailTooLarge,
+  MailUncertain,
+} from '../failures.js';
+import { holdsLoneSurrogate, holdsNul, listOf } from '../message.js';
 import { MAIL_JOB, queuedArgs } from './args.js';
 
 export { MAIL_JOB } from './args.js';
 
 const WAKE_PAYLOAD = '{"queue":1}';
 const DEFAULT_MAX_BYTES = 256 * 1024;
+/** The journal's `dedupe_key varchar(256)`: the longest `idempotencyKey`, in characters (code points). */
+const MAX_IDEMPOTENCY_KEY = 256;
+/** How often `enqueue` tries the insert when the dedupe key keeps changing hands under it. */
+const ENQUEUE_ATTEMPTS = 3;
 /** 5 s, 10 s, 20 s, … capped at 1 h; dead after the 5th try. */
 const DEFAULT_RETRY = backoff.exponential({ base: 5000, max: 3_600_000 }).upTo(4);
 
@@ -47,12 +57,12 @@ export type MailOutboxOptions = {
   readonly tables: Pick<JournalTables, 'jobs'>;
   /** Waits between tries. Default: 5 s doubling to 1 h, 5 tries in all. */
   readonly retry?: Backoff;
-  /** Largest stored message, in bytes of JSON. Default 256 KiB. */
+  /** Largest stored message, in bytes of JSON. Default 256 KiB. A whole number above 0, or `mailOutbox` throws `ARKI_MAIL_E001`. */
   readonly maxBytes?: number;
 };
 
 export type EnqueueOptions = Omit<SendOptions, 'signal'> & {
-  /** After this moment the mail is not sent; the job is dead with `MailExpired`. */
+  /** After this moment the mail is not sent; the job is dead with `MailExpired`. An Invalid Date is a returned `MailInvalidMessage`. */
   readonly expiresAt?: Date;
 };
 
@@ -60,7 +70,10 @@ export type MailOutbox = {
   /**
    * Queues one mail inside `tx`. Returns `MailInvalidInput` when the template's schema refuses
    * the input, `MailInvalidMessage` when the message cannot be sent as written (an empty address,
-   * a line break), and `MailTooLarge` when it is over `maxBytes`; nothing is queued. Throws
+   * a line break, a NUL character or a lone surrogate in any field, an `idempotencyKey` that is empty,
+   * holds NUL or a lone surrogate or is over 256 characters, an `expiresAt` that is an Invalid Date),
+   * `MailTooLarge` when it is over `maxBytes`, and `MailEnqueueContended` when other
+   * writers kept taking its `idempotencyKey` while it queued; nothing is queued. Throws
    * {@link MailError}: `E009` for the root database, `E002` unless there is exactly one `to`
    * recipient. The same `idempotencyKey` while a job is still queued returns that job (`deduped: true`).
    */
@@ -74,6 +87,7 @@ export type MailOutbox = {
     | FailureOf<typeof renderTemplate>
     | FailureOf<typeof MailInvalidMessage>
     | FailureOf<typeof MailTooLarge>
+    | FailureOf<typeof MailEnqueueContended>
     | FailureOf<typeof jobId>
   >;
   /** Runs queued mail: pass it to `journal.worker(db, { jobs })`, or combine it with `combineRunners`. */
@@ -94,6 +108,20 @@ class QueuedSendFailed extends Error {
   }
 }
 
+/** Why the journal's dedupe column cannot store `key`, or `undefined` when it can. */
+function idempotencyKeyProblem(key: string | undefined): string | undefined {
+  if (key === undefined) return undefined;
+  if (key === '') return 'The idempotencyKey is empty.';
+  if (holdsNul(key)) return 'The idempotencyKey contains the NUL character (U+0000).';
+  // The driver writes a lone surrogate as U+FFFD, so two different keys would share one dedupe slot.
+  if (holdsLoneSurrogate(key)) return 'The idempotencyKey contains a lone surrogate (such as U+D800 alone).';
+  const characters = [...key].length;
+  if (characters > MAX_IDEMPOTENCY_KEY) {
+    return `The idempotencyKey is ${characters} characters; the limit is ${MAX_IDEMPOTENCY_KEY}.`;
+  }
+  return undefined;
+}
+
 /** A later try can help: the service may not have taken the mail, or refused it for now (429, 5xx). */
 const worthRetrying = (failure: Failure): boolean =>
   MailUncertain.is(failure) || (MailRejected.is(failure) && failure.data.retryable);
@@ -102,6 +130,9 @@ export function mailOutbox(options: MailOutboxOptions): MailOutbox {
   const { mailer, tables } = options;
   const retry = options.retry ?? DEFAULT_RETRY;
   const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
+  // NaN would let every mail through and a negative size would refuse every mail, silently.
+  if (!(Number.isSafeInteger(maxBytes) && maxBytes > 0))
+    invalidConfig(`mailOutbox: \`maxBytes\` must be a whole number of bytes above 0, got ${maxBytes}.`);
   // The journal's wake channel: every journal worker of this table hears it.
   const tableSchema = getTableConfig(tables.jobs).schema;
   const channel = tableSchema === undefined ? 'journal_wake' : `${tableSchema}_journal_wake`;
@@ -119,13 +150,19 @@ export function mailOutbox(options: MailOutboxOptions): MailOutbox {
         'A queued mail has exactly one `to` recipient and no cc or bcc.',
       );
     }
+    const badKey = idempotencyKeyProblem(enqueueOptions.idempotencyKey);
+    if (badKey !== undefined) return MailInvalidMessage({ problem: badKey });
+    const { expiresAt } = enqueueOptions;
+    if (expiresAt !== undefined && Number.isNaN(expiresAt.getTime())) {
+      return MailInvalidMessage({ problem: 'The expiresAt is an Invalid Date.' });
+    }
     const composed = await mailer.compose(template, input, enqueueOptions);
     if (isFailure(composed)) return composed;
 
     const args: QueuedArgs = {
       version: 1,
       message: composed,
-      ...(enqueueOptions.expiresAt === undefined ? {} : { expiresAt: enqueueOptions.expiresAt.toISOString() }),
+      ...(expiresAt === undefined ? {} : { expiresAt: expiresAt.toISOString() }),
     };
     const bytes = new TextEncoder().encode(JSON.stringify(args)).byteLength;
     if (bytes > maxBytes) return MailTooLarge({ bytes, maxBytes });
@@ -133,24 +170,28 @@ export function mailOutbox(options: MailOutboxOptions): MailOutbox {
     const dedupeKey = enqueueOptions.idempotencyKey ?? null;
     const id = jobId();
     if (isFailure(id)) return id;
-    const inserted = await tx
-      .insert(tables.jobs)
-      .values({ id, kind: 'queue', jobName: MAIL_JOB, args, dedupeKey })
-      .onConflictDoNothing()
-      .returning({ id: tables.jobs.id });
-    const [row] = inserted;
-    if (row !== undefined) {
-      // Delivered at commit, dropped on rollback.
-      await tx.execute(sql`select pg_notify(${channel}, ${WAKE_PAYLOAD})`);
-      return { jobId: row.id, deduped: false };
+    // The dedupe index refuses the insert while a job with this key is queued. The worker may send
+    // and delete that job between our refused insert and our select; then the key is free again and
+    // the insert is tried once more. A second loss needs another writer to win the key in between.
+    for (let attempt = 0; attempt < ENQUEUE_ATTEMPTS; attempt += 1) {
+      const inserted = await tx
+        .insert(tables.jobs)
+        .values({ id, kind: 'queue', jobName: MAIL_JOB, args, dedupeKey })
+        .onConflictDoNothing()
+        .returning({ id: tables.jobs.id });
+      const [row] = inserted;
+      if (row !== undefined) {
+        // Delivered at commit, dropped on rollback.
+        await tx.execute(sql`select pg_notify(${channel}, ${WAKE_PAYLOAD})`);
+        return { jobId: row.id, deduped: false };
+      }
+      const [existing] = await tx
+        .select({ id: tables.jobs.id })
+        .from(tables.jobs)
+        .where(and(eq(tables.jobs.jobName, MAIL_JOB), eq(tables.jobs.dedupeKey, dedupeKey ?? '')));
+      if (existing !== undefined) return { jobId: existing.id, deduped: true };
     }
-    // Only the dedupe index can refuse the insert: a job with this key is still queued.
-    const [existing] = await tx
-      .select({ id: tables.jobs.id })
-      .from(tables.jobs)
-      .where(and(eq(tables.jobs.jobName, MAIL_JOB), eq(tables.jobs.dedupeKey, dedupeKey ?? '')));
-    if (existing === undefined) throw new Error('mail enqueue: insert refused but no queued job holds the key');
-    return { jobId: existing.id, deduped: true };
+    return MailEnqueueContended({ attempts: ENQUEUE_ATTEMPTS });
   };
 
   const runner: JobRunner = {

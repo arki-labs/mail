@@ -8,8 +8,10 @@ import { isFailure } from '@arki/failure';
 
 import type { MailTransport } from '../types.js';
 import type { FetchFn } from './post-json.js';
+import { invalidConfig } from '../errors.js';
 import { listOf } from '../message.js';
-import { badResponse, everyRecipient, logged, rejection } from '../transport-failures.js';
+import { traceTransport } from '../telemetry.js';
+import { badResponse, checkTimeoutMs, everyRecipient, logged, rejection } from '../transport-failures.js';
 import { mailpitRefusalSchema, mailpitSentSchema, readAnswer } from './answers.js';
 import { postJson } from './post-json.js';
 
@@ -40,9 +42,19 @@ function contactOf(address: string): { readonly Email: string; readonly Name?: s
  */
 export function mailpit(options: MailpitOptions): MailTransport {
   const id = options.id ?? 'mailpit';
+  checkTimeoutMs(id, options.timeoutMs);
   const fetchFn = options.fetch ?? globalThis.fetch;
   const url = `${options.baseUrl.replace(/\/+$/, '')}/api/v1/send`;
-  return {
+  // `fetch` refuses anything else before sending, which would read as an uncertain send on every mail.
+  const parsed = URL.canParse(url) ? new URL(url) : undefined;
+  if (
+    parsed === undefined ||
+    (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') ||
+    parsed.username !== '' ||
+    parsed.password !== ''
+  )
+    invalidConfig(`${id}: \`baseUrl\` must be an http(s) URL without credentials, such as http://localhost:8025.`);
+  return traceTransport('mailpit', {
     id,
     async send(message, sendOptions) {
       const replyTo = listOf(message.replyTo);
@@ -91,5 +103,5 @@ export function mailpit(options: MailpitOptions): MailTransport {
         recipients: everyRecipient(message, 'accepted'),
       });
     },
-  };
+  });
 }

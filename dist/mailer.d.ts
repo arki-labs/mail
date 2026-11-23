@@ -4,9 +4,9 @@
  */
 import type { FailureOf, Result } from '@arki/failure';
 import type { SchemaInput, StandardSchemaV1 } from '@arki/schema';
+import type { MailInvalidMessage } from './failures.js';
 import type { MailTemplate } from './template.js';
 import type { Address, Addresses, Awaitable, MailContent, MailEvent, MailMessage, MailTransport, RenderContext, SendFailure, SendOptions, SendRawFailure, SentMail } from './types.js';
-import type { MailInvalidMessage } from './failures.js';
 import { renderTemplate } from './template.js';
 export type MailerOptions = {
     readonly transport: MailTransport;

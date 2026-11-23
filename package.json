@@ -1,6 +1,6 @@
 {
   "name": "@arki/mail",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Typed mail for TypeScript: Standard Schema templates, honest transports, quota failover, and mail that commits with your transaction.",
   "license": "MIT",
   "repository": {
@@ -108,15 +108,16 @@
     "package.json"
   ],
   "dependencies": {
-    "@arki/failure": "0.3.0",
-    "@arki/log": "0.4.0",
-    "@arki/schema": "0.3.0",
+    "@arki/failure": "0.4.0",
+    "@arki/log": "0.4.1",
+    "@arki/schema": "0.3.1",
+    "@opentelemetry/api": "^1.9.1",
     "zod": "4.6.5"
   },
   "peerDependencies": {
-    "@arki/dot": "^0.10.0",
-    "@arki/journal": "^0.4.1",
-    "@arki/resilience": "^0.3.2",
+    "@arki/dot": "^0.11.0",
+    "@arki/journal": "^0.5.0",
+    "@arki/resilience": "^0.3.3",
     "@aws-sdk/client-sesv2": "^3",
     "@react-email/render": "^2.0.6",
     "drizzle-orm": "^1.0.0-rc.4",
@@ -155,5 +156,12 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "arki": {
+    "runtimes": [
+      "node",
+      "bun",
+      "deno"
+    ]
   }
 }

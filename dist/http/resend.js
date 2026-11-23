@@ -5,7 +5,8 @@
  */
 import { isFailure } from '@arki/failure';
 import { listOf } from '../message.js';
-import { badResponse, everyRecipient, logged, rejection } from '../transport-failures.js';
+import { traceTransport } from '../telemetry.js';
+import { badResponse, checkHeaderValue, checkTimeoutMs, everyRecipient, logged, rejection, } from '../transport-failures.js';
 import { readAnswer, resendRefusalSchema, resendSentSchema } from './answers.js';
 import { postJson } from './post-json.js';
 const RESEND_EMAILS_URL = 'https://api.resend.com/emails';
@@ -15,8 +16,10 @@ const RESEND_EMAILS_URL = 'https://api.resend.com/emails';
  */
 export function resend(options) {
     const id = options.id ?? 'resend';
+    checkTimeoutMs(id, options.timeoutMs);
+    checkHeaderValue(id, 'apiKey', options.apiKey);
     const fetchFn = options.fetch ?? globalThis.fetch;
-    return {
+    return traceTransport('resend', {
         id,
         ...(options.quotaPerMonth === undefined ? {} : { quotaPerMonth: options.quotaPerMonth }),
         async send(message, sendOptions) {
@@ -68,6 +71,6 @@ export function resend(options) {
                 recipients: everyRecipient(message, 'accepted'),
             });
         },
-    };
+    });
 }
 //# sourceMappingURL=resend.js.map

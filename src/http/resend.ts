@@ -8,7 +8,15 @@ import { isFailure } from '@arki/failure';
 import type { MailTransport } from '../types.js';
 import type { FetchFn } from './post-json.js';
 import { listOf } from '../message.js';
-import { badResponse, everyRecipient, logged, rejection } from '../transport-failures.js';
+import { traceTransport } from '../telemetry.js';
+import {
+  badResponse,
+  checkHeaderValue,
+  checkTimeoutMs,
+  everyRecipient,
+  logged,
+  rejection,
+} from '../transport-failures.js';
 import { readAnswer, resendRefusalSchema, resendSentSchema } from './answers.js';
 import { postJson } from './post-json.js';
 
@@ -33,8 +41,10 @@ export type ResendOptions = {
  */
 export function resend(options: ResendOptions): MailTransport {
   const id = options.id ?? 'resend';
+  checkTimeoutMs(id, options.timeoutMs);
+  checkHeaderValue(id, 'apiKey', options.apiKey);
   const fetchFn = options.fetch ?? globalThis.fetch;
-  return {
+  return traceTransport('resend', {
     id,
     ...(options.quotaPerMonth === undefined ? {} : { quotaPerMonth: options.quotaPerMonth }),
     async send(message, sendOptions) {
@@ -88,5 +98,5 @@ export function resend(options: ResendOptions): MailTransport {
         recipients: everyRecipient(message, 'accepted'),
       });
     },
-  };
+  });
 }

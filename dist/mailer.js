@@ -3,7 +3,8 @@ import { invalidConfig, isMailError } from './errors.js';
 import { failover } from './failover.js';
 import { MailUncertain } from './failures.js';
 import { errorField, log } from './log.js';
-import { checkMessage, listOf, redirect } from './message.js';
+import { checkIdempotencyKey, checkMessage, listOf, redirect } from './message.js';
+import { observeMail } from './telemetry.js';
 import { renderTemplate } from './template.js';
 /**
  * @example
@@ -37,7 +38,7 @@ export function mailer(options) {
         return failure;
     };
     const deliver = async (message, sendOptions) => {
-        const invalid = checkMessage(message);
+        const invalid = checkMessage(message) ?? checkIdempotencyKey(sendOptions.idempotencyKey);
         if (invalid !== undefined)
             return fail(invalid, message.template);
         const outgoing = redirectTo === undefined ? message : redirect(message, redirectTo);
@@ -74,15 +75,20 @@ export function mailer(options) {
         };
         return checkMessage(message) ?? message;
     };
+    // One `mail.send` span per send; the provider spans of the transport (one per failover attempt) nest under it.
+    const sendAttributes = (template) => ({
+        'mail.transport': transport.id,
+        ...(template === undefined ? {} : { 'mail.template': template }),
+    });
     return {
-        async send(template, input, sendOptions) {
+        send: (template, input, sendOptions) => observeMail('send', sendAttributes(template.name), async () => {
             const composed = await compose(template, input, sendOptions);
             if (isFailure(composed))
                 return fail(composed, template.name);
             return deliver(composed, { idempotencyKey: sendOptions.idempotencyKey, signal: sendOptions.signal });
-        },
+        }),
         compose,
-        sendRaw: (message, sendOptions = {}) => deliver({ ...message, from: message.from ?? defaultFrom }, sendOptions),
+        sendRaw: (message, sendOptions = {}) => observeMail('send', sendAttributes(message.template), () => deliver({ ...message, from: message.from ?? defaultFrom }, sendOptions)),
         render: (template, input, context) => renderTemplate(template, input, context),
     };
 }

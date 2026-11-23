@@ -81,10 +81,16 @@ export declare const MailExpired: import("@arki/failure").FailureDefinition<"mai
 }>>;
 /**
  * The message cannot be sent as written: no recipient, an empty address, a line break in an address,
- * the subject or a header (header injection), or a header the message owns. Nothing was sent.
+ * the subject or a header (header injection), a header the message owns, or a NUL character (U+0000)
+ * or a lone surrogate (such as U+D800 alone) in any field. `send` and `sendRaw` also return it for an
+ * `idempotencyKey` holding a line break, a NUL character or a character above U+00FF (it travels as an
+ * HTTP header). `enqueue` also returns it for an `idempotencyKey` that is empty, holds NUL or a lone
+ * surrogate, or is over 256 characters (the journal's dedupe column), and for an `expiresAt` that is an
+ * Invalid Date.
+ * Nothing was sent or queued.
  * Recipients are usually typed by a user, so this is an expected outcome, not a bug.
  *
- * @fix Show the user what is wrong with the address, or remove the line break or reserved header. The same message fails again.
+ * @fix Show the user what is wrong with the address, or remove the line break, NUL character, lone surrogate or reserved header. The same message fails again.
  * @verify bun run test -- src/message.spec.ts
  */
 export declare const MailInvalidMessage: import("@arki/failure").FailureDefinition<"mail.invalid_message", import("@standard-schema/spec").StandardSchemaV1<{
@@ -104,5 +110,18 @@ export declare const MailTooLarge: import("@arki/failure").FailureDefinition<"ma
 }, {
     bytes: number;
     maxBytes: number;
+}>>;
+/**
+ * Other writers kept winning this mail's `idempotencyKey` while `enqueue` queued it: each time the
+ * dedupe index refused the insert, the job that held the key was gone before it could be read.
+ * Nothing was queued. Only constant contention on one key causes this.
+ *
+ * @fix Retry the write; the key settles once the other writers finish.
+ * @verify bun run test -- src/pg
+ */
+export declare const MailEnqueueContended: import("@arki/failure").FailureDefinition<"mail.enqueue_contended", import("@standard-schema/spec").StandardSchemaV1<{
+    attempts: number;
+}, {
+    attempts: number;
 }>>;
 //# sourceMappingURL=failures.d.ts.map

@@ -1,6 +1,10 @@
 /**
  * Checks on a message before any transport sees it. A line break in a header or an address
  * would let input add headers of its own (header injection), so it is refused, not cleaned.
+ * A NUL character (U+0000) is refused too: no mail can carry it, and Postgres refuses it in the
+ * outbox row (SQLSTATE 22P05), so `send` and `enqueue` agree. So is a lone surrogate (such as
+ * `'\ud800'` alone): it is not text, UTF-8 cannot encode it, and the outbox's jsonb column
+ * refuses its `\ud800` escape (SQLSTATE 22P02).
  */
 import type { FailureOf } from '@arki/failure';
 
@@ -21,6 +25,36 @@ const RESERVED_HEADERS = new Set([
 ]);
 
 const LINE_BREAK = /[\r\n]/;
+const NUL = '\u0000';
+/** A UTF-16 surrogate with no partner: a high one not followed by a low one, or a low one not after a high one. Hermes-safe: no lookbehind. */
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?:^|[^\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+/** A character `fetch` refuses in a header value: NUL, CR, LF, or anything above U+00FF (a header value is bytes). */
+const UNSENDABLE_IN_HEADER = /[\0\n\r\u{100}-\u{10FFFF}]/u;
+
+/** Whether `fetch` would refuse `value` as an HTTP header value, before sending anything. */
+export function unsendableInHeader(value: string): boolean {
+  return UNSENDABLE_IN_HEADER.test(value);
+}
+
+/** Whether a key or a string anywhere in this value holds U+0000. */
+export function holdsNul(value: unknown): boolean {
+  let found = false;
+  JSON.stringify(value, (key: string, item: unknown) => {
+    if (key.includes(NUL) || (typeof item === 'string' && item.includes(NUL))) found = true;
+    return item;
+  });
+  return found;
+}
+
+/** Whether a key or a string anywhere in this value holds a lone surrogate (such as `'\ud800'` alone). */
+export function holdsLoneSurrogate(value: unknown): boolean {
+  let found = false;
+  JSON.stringify(value, (key: string, item: unknown) => {
+    if (LONE_SURROGATE.test(key) || (typeof item === 'string' && LONE_SURROGATE.test(item))) found = true;
+    return item;
+  });
+  return found;
+}
 
 /** Addresses as a list; `undefined` is an empty list. */
 export function listOf(addresses: Addresses | undefined): readonly string[] {
@@ -44,6 +78,11 @@ function problemWith(message: MailMessage): string | undefined {
   if (addresses.some(address => address.trim() === '')) return 'An address is empty.';
   if (addresses.some(address => LINE_BREAK.test(address))) return 'An address contains a line break.';
   if (LINE_BREAK.test(message.subject)) return 'The subject contains a line break.';
+  for (const [field, value] of Object.entries(message)) {
+    if (holdsNul(value)) return `The ${field} contains the NUL character (U+0000).`;
+    if (holdsLoneSurrogate(value))
+      return `The ${field} contains a lone surrogate (such as U+D800 alone), which is not text.`;
+  }
   for (const [name, value] of Object.entries(message.headers ?? {})) {
     if (LINE_BREAK.test(name) || LINE_BREAK.test(value)) return `Header "${name}" contains a line break.`;
     if (RESERVED_HEADERS.has(name.toLowerCase())) {
@@ -51,6 +90,19 @@ function problemWith(message: MailMessage): string | undefined {
     }
   }
   return undefined;
+}
+
+/**
+ * `MailInvalidMessage` when `idempotencyKey` cannot travel as an HTTP header (Resend sends it as
+ * `Idempotency-Key`, and `failover` may pick Resend), or `undefined` when it can. Without this check
+ * `fetch` refuses the request before sending and the send reads as `MailUncertain`.
+ */
+export function checkIdempotencyKey(key: string | undefined): FailureOf<typeof MailInvalidMessage> | undefined {
+  if (key === undefined || !unsendableInHeader(key)) return undefined;
+  return MailInvalidMessage({
+    problem:
+      'The idempotencyKey holds a line break, a NUL character or a character above U+00FF; it travels as an HTTP header.',
+  });
 }
 
 /**

@@ -5,8 +5,10 @@
  * Carries every message field; `idempotencyKey` is ignored because Mailpit has no such thing.
  */
 import { isFailure } from '@arki/failure';
+import { invalidConfig } from '../errors.js';
 import { listOf } from '../message.js';
-import { badResponse, everyRecipient, logged, rejection } from '../transport-failures.js';
+import { traceTransport } from '../telemetry.js';
+import { badResponse, checkTimeoutMs, everyRecipient, logged, rejection } from '../transport-failures.js';
 import { mailpitRefusalSchema, mailpitSentSchema, readAnswer } from './answers.js';
 import { postJson } from './post-json.js';
 /** `Name <a@b.dev>` or `a@b.dev`, as Mailpit wants it: `{ Email, Name? }`. */
@@ -25,9 +27,17 @@ function contactOf(address) {
  */
 export function mailpit(options) {
     const id = options.id ?? 'mailpit';
+    checkTimeoutMs(id, options.timeoutMs);
     const fetchFn = options.fetch ?? globalThis.fetch;
     const url = `${options.baseUrl.replace(/\/+$/, '')}/api/v1/send`;
-    return {
+    // `fetch` refuses anything else before sending, which would read as an uncertain send on every mail.
+    const parsed = URL.canParse(url) ? new URL(url) : undefined;
+    if (parsed === undefined ||
+        (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') ||
+        parsed.username !== '' ||
+        parsed.password !== '')
+        invalidConfig(`${id}: \`baseUrl\` must be an http(s) URL without credentials, such as http://localhost:8025.`);
+    return traceTransport('mailpit', {
         id,
         async send(message, sendOptions) {
             const replyTo = listOf(message.replyTo);
@@ -74,6 +84,6 @@ export function mailpit(options) {
                 recipients: everyRecipient(message, 'accepted'),
             });
         },
-    };
+    });
 }
 //# sourceMappingURL=mailpit.js.map

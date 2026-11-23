@@ -13,9 +13,19 @@ import { isFailure } from '@arki/failure';
 
 import type { MailTransport, RecipientOutcome } from '../types.js';
 import type { FetchFn } from './post-json.js';
+import { invalidConfig } from '../errors.js';
 import { MailRejected } from '../failures.js';
 import { listOf } from '../message.js';
-import { badResponse, everyRecipient, logged, rejection, unsupported } from '../transport-failures.js';
+import { traceTransport } from '../telemetry.js';
+import {
+  badResponse,
+  checkHeaderValue,
+  checkTimeoutMs,
+  everyRecipient,
+  logged,
+  rejection,
+  unsupported,
+} from '../transport-failures.js';
 import { cloudflareAnswerSchema, codeText, readAnswer } from './answers.js';
 import { postJson } from './post-json.js';
 
@@ -69,9 +79,14 @@ function outcomesOf(result: CloudflareResult): readonly RecipientOutcome[] {
  */
 export function cloudflare(options: CloudflareOptions): MailTransport {
   const id = options.id ?? 'cloudflare';
+  checkTimeoutMs(id, options.timeoutMs);
+  checkHeaderValue(id, 'apiToken', options.apiToken);
+  // `encodeURIComponent` throws a raw URIError on a lone surrogate; an empty id would address no account.
+  if (options.accountId.trim() === '' || !options.accountId.isWellFormed())
+    invalidConfig(`${id}: \`accountId\` must be your Cloudflare account id, not empty and without lone surrogates.`);
   const fetchFn = options.fetch ?? globalThis.fetch;
   const url = `${CLOUDFLARE_API_BASE}/accounts/${encodeURIComponent(options.accountId)}/email/sending/send`;
-  return {
+  return traceTransport('cloudflare', {
     id,
     ...(options.quotaPerMonth === undefined ? {} : { quotaPerMonth: options.quotaPerMonth }),
     async send(message, sendOptions) {
@@ -134,5 +149,5 @@ export function cloudflare(options: CloudflareOptions): MailTransport {
         recipients: outcomes,
       });
     },
-  };
+  });
 }

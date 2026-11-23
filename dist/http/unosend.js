@@ -5,7 +5,8 @@
  */
 import { isFailure } from '@arki/failure';
 import { listOf } from '../message.js';
-import { badResponse, everyRecipient, logged, rejection, unsupported } from '../transport-failures.js';
+import { traceTransport } from '../telemetry.js';
+import { badResponse, checkHeaderValue, checkTimeoutMs, everyRecipient, logged, rejection, unsupported, } from '../transport-failures.js';
 import { codeText, readAnswer, unosendRefusalSchema, unosendSentSchema } from './answers.js';
 import { postJson } from './post-json.js';
 const UNOSEND_EMAILS_URL = 'https://www.unosend.com/api/v1/emails';
@@ -27,8 +28,10 @@ function errorDetail(body) {
  */
 export function unosend(options) {
     const id = options.id ?? 'unosend';
+    checkTimeoutMs(id, options.timeoutMs);
+    checkHeaderValue(id, 'apiKey', options.apiKey);
     const fetchFn = options.fetch ?? globalThis.fetch;
-    return {
+    return traceTransport('unosend', {
         id,
         ...(options.quotaPerMonth === undefined ? {} : { quotaPerMonth: options.quotaPerMonth }),
         async send(message, sendOptions) {
@@ -71,6 +74,6 @@ export function unosend(options) {
                 recipients: everyRecipient(message, 'accepted'),
             });
         },
-    };
+    });
 }
 //# sourceMappingURL=unosend.js.map

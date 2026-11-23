@@ -4,7 +4,8 @@
  */
 import { and, eq, isNotNull, isNull } from 'drizzle-orm';
 import { is, recordSchema } from '@arki/schema';
-import { MAIL_JOB, mailMessageSchema } from './args.js';
+import { mailMessageSchema } from './args-schemas.js';
+import { MAIL_JOB } from './args.js';
 export function mailQueueAssertions(db, tables) {
     const { jobs } = tables;
     const read = async (dead, template) => {

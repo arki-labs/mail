@@ -97,17 +97,23 @@ export const MailExpired = defineFailure('mail.expired', {
 });
 /**
  * The message cannot be sent as written: no recipient, an empty address, a line break in an address,
- * the subject or a header (header injection), or a header the message owns. Nothing was sent.
+ * the subject or a header (header injection), a header the message owns, or a NUL character (U+0000)
+ * or a lone surrogate (such as U+D800 alone) in any field. `send` and `sendRaw` also return it for an
+ * `idempotencyKey` holding a line break, a NUL character or a character above U+00FF (it travels as an
+ * HTTP header). `enqueue` also returns it for an `idempotencyKey` that is empty, holds NUL or a lone
+ * surrogate, or is over 256 characters (the journal's dedupe column), and for an `expiresAt` that is an
+ * Invalid Date.
+ * Nothing was sent or queued.
  * Recipients are usually typed by a user, so this is an expected outcome, not a bug.
  *
- * @fix Show the user what is wrong with the address, or remove the line break or reserved header. The same message fails again.
+ * @fix Show the user what is wrong with the address, or remove the line break, NUL character, lone surrogate or reserved header. The same message fails again.
  * @verify bun run test -- src/message.spec.ts
  */
 export const MailInvalidMessage = defineFailure('mail.invalid_message', {
     status: 422,
     data: z.object({ problem: z.string() }),
     message: 'The mail cannot be sent as written: {problem}',
-    remediation: 'Fix the address, subject or header named in the message. The same message fails again.',
+    remediation: 'Fix the field named in the message. The same message fails again.',
 });
 /**
  * The rendered message is larger than the outbox allows (`maxBytes`). Nothing was queued.
@@ -120,5 +126,19 @@ export const MailTooLarge = defineFailure('mail.too_large', {
     data: z.object({ bytes: z.number(), maxBytes: z.number() }),
     message: 'The queued mail is {bytes} bytes; the limit is {maxBytes}.',
     remediation: 'Shorten the content, or raise `maxBytes`. Put large files elsewhere and link them.',
+});
+/**
+ * Other writers kept winning this mail's `idempotencyKey` while `enqueue` queued it: each time the
+ * dedupe index refused the insert, the job that held the key was gone before it could be read.
+ * Nothing was queued. Only constant contention on one key causes this.
+ *
+ * @fix Retry the write; the key settles once the other writers finish.
+ * @verify bun run test -- src/pg
+ */
+export const MailEnqueueContended = defineFailure('mail.enqueue_contended', {
+    status: 503,
+    data: z.object({ attempts: z.number() }),
+    message: 'The mail was not queued: its idempotency key changed hands {attempts} times.',
+    remediation: 'Retry the write; the key settles once the other writers finish.',
 });
 //# sourceMappingURL=failures.js.map
